@@ -11,7 +11,6 @@ path_toolchain_beplnex_src_mono_x64 = None
 path_toolchain_beplnex_src_il2cpp_x86 = None # Download beplnex6 for il2cpp from https://builds.bepinex.dev/projects/bepinex_be
 path_toolchain_beplnex_src_il2cpp_x64 = None
 path_toolchain_cpp2il = None # Download cpp2il from https://github.com/SamboyCoding/Cpp2IL/releases
-path_toolchain_il2cpp_unhollower = None # Download Il2CppAssemblyUnhollower from https://github.com/knah/Il2CppAssemblyUnhollower/releases
 path_toolchain_unity_explorer_mono = None
 path_toolchain_unity_explorer_il2cpp = None
 
@@ -33,7 +32,6 @@ def determine_path_toolchain(path_dir_self):
 	global path_toolchain_beplnex_src_il2cpp_x86
 	global path_toolchain_beplnex_src_il2cpp_x64
 	global path_toolchain_cpp2il
-	global path_toolchain_il2cpp_unhollower
 	global path_toolchain_unity_explorer_mono
 	global path_toolchain_unity_explorer_il2cpp
 
@@ -68,11 +66,6 @@ def determine_path_toolchain(path_dir_self):
 			if ("cpp2il" in name_item.lower()) and string_has_tail(name_item.lower(), ".exe") and (path_toolchain_cpp2il is None):
 				path_toolchain_cpp2il = path_item
 
-			# Determine Il2Cpp Unhollower.
-			path_il2cpp_unhollower = os.path.join(path_item, "AssemblyUnhollower.exe")
-			if os.path.isfile(path_il2cpp_unhollower) and (path_toolchain_il2cpp_unhollower is None):
-				path_toolchain_il2cpp_unhollower = path_il2cpp_unhollower
-
 			# Determine Unity Explorer.
 			path_toolchain_unity_explorer = os.path.join(path_item, "plugins", "sinai-dev-UnityExplorer")
 			if os.path.isfile(os.path.join(path_toolchain_unity_explorer, "UnityExplorer.BIE5.Mono.dll")):
@@ -90,8 +83,6 @@ def determine_path_toolchain(path_dir_self):
 		print("Warning: path_toolchain_beplnex_src_il2cpp_x64 not found.")
 	if path_toolchain_cpp2il is None:
 		print("Warning: path_toolchain_cpp2il not found.")
-	if path_toolchain_il2cpp_unhollower is None:
-		print("Warning: path_toolchain_il2cpp_unhollower not found.")
 	if path_toolchain_unity_explorer_mono is None:
 		print("Warning: path_toolchain_unity_explorer_mono not found.")
 	if path_toolchain_unity_explorer_il2cpp is None:
@@ -278,12 +269,9 @@ def process(args):
 			print("Cannot find toolchain: beplnex.")
 			return False
 
-		# Make sure that cpp2il and il2cpp_unhollower are valid.
+		# Make sure that cpp2il is valid.
 		if (path_toolchain_cpp2il is None) or (not os.path.isfile(path_toolchain_cpp2il)):
 			print("Cannot find toolchain: cpp2il.")
-			return False
-		if (path_toolchain_il2cpp_unhollower is None) or (not os.path.isfile(path_toolchain_il2cpp_unhollower)):
-			print("Cannot find toolchain: il2cpp unhollower.")
 			return False
 
 		# Copy corresponding beplnex files.
@@ -291,22 +279,24 @@ def process(args):
 
 		# Run cpp2il.
 		path_dir_game_data_cpp2il = path_dir_game_data + "_cpp2il"
+		command_cpp2il = "{} --game-path \"{}\" --exe-name \"{}\" --output-root \"{}\"".format(path_toolchain_cpp2il, path_dir_game, string_sub_tail(os.path.basename(path_file_exe_unity), ".exe"), path_dir_game_data_cpp2il)
+		if not args.skip_il2cpp_interop:
+			command_cpp2il = "{} --skip-analysis --skip-metadata-txts --disable-registration-prompts".format(command_cpp2il) # https://github.com/BepInEx/Il2CppInterop/blob/master/Documentation/Command-Line-Usage.md
 		ensure_dir(path_dir_game_data_cpp2il)
-		if not run_process("{} --game-path \"{}\" --exe-name \"{}\" --output-root \"{}\"".format(path_toolchain_cpp2il, path_dir_game, string_sub_tail(os.path.basename(path_file_exe_unity), ".exe"), path_dir_game_data_cpp2il)):
+		if not run_process(command_cpp2il):
 			print("Failed to run cpp2il")
 			return False
 		path_dir_assembly_source = path_dir_game_data_cpp2il
 
-		# Run Unhollower.
-		if not args.skip_unhollower:
-			path_dir_game_data_unhollowed = path_dir_game_data + "_unhollowed"
-			ensure_dir(path_dir_game_data_unhollowed)
-			path_file_dll_mscorlib = os.path.join(path_dir_game_data_cpp2il, "mscorlib.dll") # From unhollowed file.
-			# path_file_dll_mscorlib = os.path.join(path_dir_game, "dotnet", "mscorlib.dll") # From beplnex IL2CPP. This dows not work, why???
-			if not run_process("{} --input=\"{}\" --output=\"{}\" --mscorlib=\"{}\"".format(path_toolchain_il2cpp_unhollower, path_dir_game_data_cpp2il, path_dir_game_data_unhollowed, path_file_dll_mscorlib)):
-				print("Failed to run cpp2il")
+		# Run il2cpp interop.
+		if not args.skip_il2cpp_interop:
+			path_dir_game_data_interop = path_dir_game_data + "_interop"
+			ensure_dir(path_dir_game_data_interop)
+			command = "il2cppinterop generate --input \"{}\" --output \"{}\" --game-assembly \"{}\"".format(path_dir_game_data_cpp2il, path_dir_game_data_interop, os.path.join(path_dir_game, "GameAssembly.dll"))
+			if not run_process(command):
+				print("Failed to run interop")
 				return False
-			path_dir_assembly_source = path_dir_game_data_unhollowed
+			path_dir_assembly_source = path_dir_game_data_interop
 
 		# Run command to create beplnex project.
 		ensure_dir(path_dir_game_projects)
@@ -403,7 +393,7 @@ if __name__ == "__main__":
 	parser.add_argument('-pfeu', '--path_file_exe_unity', nargs=1, metavar='PATH_FILE_EXE_UNITY', help="When path of exe is not PATH_DIR_GAME\\PATH_DIR_GAME.exe, you have to specify it manually.")
 	parser.add_argument('-lnla', '--list_name_lib_assembly', nargs='+', metavar=('NAME_LIB_ASSEMBLY_1', 'NAME_LIB_ASSEMBLY_2'), help="List of libs names you wish to depend on besides Assembly-CSharp.dll.")
 	parser.add_argument('-lpla', '--list_path_lib_assembly', nargs='+', metavar=('PATH_LIB_ASSEMBLY_1', 'PATH_LIB_ASSEMBLY_2'), help="List of libs paths you wish to depend on besides Assembly-CSharp.dll.")
-	parser.add_argument('-su', '--skip_unhollower', help="Skip Il2Cpp unhollower. Sometimes it crashes.", action='store_true')
+	parser.add_argument('-si', '--skip_il2cpp_interop', help="Skip Il2Cpp interop.", action='store_true')
 	parser.add_argument('-se', '--skip_explorer', help="Do not deploy unity explorer, a plugin for convenience.", action='store_true')
 	args = parser.parse_args()
 
