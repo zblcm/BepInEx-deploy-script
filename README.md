@@ -22,7 +22,7 @@ You want to creates mods for more Unity games, but tired of copying BepInEx ever
 ## Quick start
 Download this repo or clone.
 ```
-git@github.com:zblcm/BepInEx-deploy-script.git
+git clone git@github.com:zblcm/BepInEx-deploy-script.git
 cd BepInEx-deploy-script
 ```
 Create a directory under repo root directory.
