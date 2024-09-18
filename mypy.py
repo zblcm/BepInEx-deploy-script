@@ -11,6 +11,8 @@ path_toolchain_beplnex_src_mono_x64 = None
 path_toolchain_beplnex_src_il2cpp_x86 = None # Download beplnex6 for il2cpp from https://builds.bepinex.dev/projects/bepinex_be
 path_toolchain_beplnex_src_il2cpp_x64 = None
 path_toolchain_cpp2il = None # Download cpp2il from https://github.com/SamboyCoding/Cpp2IL/releases
+path_toolchain_il2cpp_dumper = None # (Optional) Download il2cpp_dumper from https://github.com/Perfare/Il2CppDumper/releases
+path_toolchain_il2cpp_unhollower = None # (Optional) Download il2cpp_unhollower from https://github.com/knah/Il2CppAssemblyUnhollower/releases
 path_toolchain_unity_explorer_mono = None
 path_toolchain_unity_explorer_il2cpp = None
 
@@ -32,6 +34,8 @@ def determine_path_toolchain(path_dir_self):
 	global path_toolchain_beplnex_src_il2cpp_x86
 	global path_toolchain_beplnex_src_il2cpp_x64
 	global path_toolchain_cpp2il
+	global path_toolchain_il2cpp_dumper
+	global path_toolchain_il2cpp_unhollower
 	global path_toolchain_unity_explorer_mono
 	global path_toolchain_unity_explorer_il2cpp
 
@@ -66,6 +70,16 @@ def determine_path_toolchain(path_dir_self):
 			if ("cpp2il" in name_item.lower()) and string_has_tail(name_item.lower(), ".exe") and (path_toolchain_cpp2il is None):
 				path_toolchain_cpp2il = path_item
 
+			# Determine path_toolchain_il2cpp_dumper.
+			path_il2cpp_dumper = os.path.join(path_item, "Il2CppDumper.exe")
+			if os.path.isfile(path_il2cpp_dumper) and (path_toolchain_il2cpp_dumper is None):
+				path_toolchain_il2cpp_dumper = path_il2cpp_dumper
+
+			# Determine path_toolchain_il2cpp_unhollower.
+			path_il2cpp_unhollower = os.path.join(path_item, "AssemblyUnhollower.exe")
+			if os.path.isfile(path_il2cpp_unhollower) and (path_toolchain_il2cpp_unhollower is None):
+				path_toolchain_il2cpp_unhollower = path_il2cpp_unhollower
+
 			# Determine Unity Explorer.
 			path_toolchain_unity_explorer = os.path.join(path_item, "plugins", "sinai-dev-UnityExplorer")
 			if os.path.isfile(os.path.join(path_toolchain_unity_explorer, "UnityExplorer.BIE5.Mono.dll")):
@@ -83,6 +97,10 @@ def determine_path_toolchain(path_dir_self):
 		print("Warning: path_toolchain_beplnex_src_il2cpp_x64 not found.")
 	if path_toolchain_cpp2il is None:
 		print("Warning: path_toolchain_cpp2il not found.")
+	if path_toolchain_il2cpp_dumper is None:
+		print("Warning: path_toolchain_il2cpp_dumper not found.")
+	if path_toolchain_il2cpp_unhollower is None:
+		print("Warning: path_toolchain_il2cpp_unhollower not found.")
 	if path_toolchain_unity_explorer_mono is None:
 		print("Warning: path_toolchain_unity_explorer_mono not found.")
 	if path_toolchain_unity_explorer_il2cpp is None:
@@ -251,7 +269,7 @@ def process(args):
 			return False
 
 		# Assign assembly source directory for project processing.
-		path_dir_assembly_source = path_dir_game_data_mono
+		path_dir_assembly_source:str = path_dir_game_data_mono
 
 		# Assign path of unity explorer.
 		if not args.skip_explorer:
@@ -259,6 +277,7 @@ def process(args):
 
 	if os.path.isdir(path_dir_game_data_il2cpp):
 		print("Unity pack version: IL2CPP")
+		path_file_gameassembly = os.path.join(path_dir_game, "GameAssembly.dll")
 
 		# Determine beplnex version.
 		if beplnex_info_arch == 86:
@@ -269,34 +288,85 @@ def process(args):
 			print("Cannot find toolchain: beplnex.")
 			return False
 
-		# Make sure that cpp2il is valid.
-		if (path_toolchain_cpp2il is None) or (not os.path.isfile(path_toolchain_cpp2il)):
-			print("Cannot find toolchain: cpp2il.")
+		# Process step1.
+		il2cpp_use_dumper:bool = args.il2cpp_use_dumper
+		path_dir_game_data_il2cpp_step1:str = None
+		command_il2cpp_step1:str = None
+
+		if il2cpp_use_dumper:
+			# Make sure that il2cpp_dumper is valid.
+			if (path_toolchain_il2cpp_dumper is None) or (not os.path.isfile(path_toolchain_il2cpp_dumper)):
+				print("Cannot find toolchain: il2cpp_dumper.")
+				return False
+			
+			# Generate command for il2cpp_dumper.
+			path_dir_game_data_il2cpp_step1 = path_dir_game_data + "_il2cppdumper"
+			command_il2cpp_step1 = "\"{}\" \"{}\" \"{}\" \"{}\"".format(
+				path_toolchain_il2cpp_dumper,
+				path_file_gameassembly,
+				os.path.join(path_dir_game_data_il2cpp, "Metadata", "global-metadata.dat"),
+				path_dir_game_data_il2cpp_step1,
+			)
+		else:
+			# Make sure that cpp2il is valid.
+			if (path_toolchain_cpp2il is None) or (not os.path.isfile(path_toolchain_cpp2il)):
+				print("Cannot find toolchain: cpp2il.")
+				return False
+			
+			# Generate command for cpp2il.
+			path_dir_game_data_il2cpp_step1 = path_dir_game_data + "_cpp2il"
+			command_il2cpp_step1 = "{} --game-path \"{}\" --exe-name \"{}\" --output-root \"{}\"".format(path_toolchain_cpp2il, path_dir_game, string_sub_tail(os.path.basename(path_file_exe_unity), ".exe"), path_dir_game_data_il2cpp_step1)
+			if not args.il2cpp_skip_step2:
+				command_il2cpp_step1 = "{} --skip-analysis --skip-metadata-txts --disable-registration-prompts".format(command_il2cpp_step1) # https://github.com/BepInEx/Il2CppInterop/blob/master/Documentation/Command-Line-Usage.md
+		
+		ensure_dir(path_dir_game_data_il2cpp_step1)
+		if not run_process(command_il2cpp_step1):
+			if il2cpp_use_dumper:
+				print("Failed to run il2cpp_dumper.")
+			else:
+				print("Failed to run cpp2il.")
 			return False
+		else:
+			if il2cpp_use_dumper:
+				path_dir_game_data_il2cpp_step1 = os.path.join(path_dir_game_data_il2cpp_step1, "DummyDll")
+		path_dir_assembly_source = path_dir_game_data_il2cpp_step1
+
+		# Process step2.
+		if not args.il2cpp_skip_step2:
+			il2cpp_use_unhollower:bool = args.il2cpp_use_unhollower
+			path_dir_game_data_il2cpp_step2:str = None
+			command_il2cpp_step2:str = None
+			if il2cpp_use_unhollower:
+				# Make sure that il2cpp_unhollower is valid.
+				if (path_toolchain_il2cpp_unhollower is None) or (not os.path.isfile(path_toolchain_il2cpp_unhollower)):
+					print("Cannot find toolchain: il2cpp_unhollower.")
+					return False
+				
+				# Generate command for il2cpp_unhollower.
+				path_dir_game_data_il2cpp_step2 = path_dir_game_data + "_unhollowed"
+				path_file_dll_mscorlib = os.path.join(path_dir_game_data_il2cpp_step1, "mscorlib.dll") # From step 1.
+				# path_file_dll_mscorlib = os.path.join(path_dir_game, "dotnet", "mscorlib.dll") # From beplnex IL2CPP. This does not work, why???
+				command_il2cpp_step2 = "\"{}\" --input=\"{}\" --output=\"{}\" --mscorlib=\"{}\"".format(
+					path_toolchain_il2cpp_unhollower,
+					path_dir_game_data_il2cpp_step1,
+					path_dir_game_data_il2cpp_step2,
+					path_file_dll_mscorlib,
+				)
+			else:
+				# Generate command for il2cpp_interop.
+				path_dir_game_data_il2cpp_step2 = path_dir_game_data + "_interop"
+				ensure_dir(path_dir_game_data_il2cpp_step2)
+				command_il2cpp_step2 = "il2cppinterop generate --input \"{}\" --output \"{}\" --game-assembly \"{}\"".format(path_dir_game_data_il2cpp_step1, path_dir_game_data_il2cpp_step2, path_file_gameassembly)
+			if not run_process(command_il2cpp_step2):
+				if il2cpp_use_unhollower:
+					print("Failed to run il2cpp_unhollower")
+				else:
+					print("Failed to run il2cpp interop")
+				return False
+			path_dir_assembly_source = path_dir_game_data_il2cpp_step2
 
 		# Copy corresponding beplnex files.
 		copy_dir(path_toolchain_beplnex_src, path_dir_game)
-
-		# Run cpp2il.
-		path_dir_game_data_cpp2il = path_dir_game_data + "_cpp2il"
-		command_cpp2il = "{} --game-path \"{}\" --exe-name \"{}\" --output-root \"{}\"".format(path_toolchain_cpp2il, path_dir_game, string_sub_tail(os.path.basename(path_file_exe_unity), ".exe"), path_dir_game_data_cpp2il)
-		if not args.skip_il2cpp_interop:
-			command_cpp2il = "{} --skip-analysis --skip-metadata-txts --disable-registration-prompts".format(command_cpp2il) # https://github.com/BepInEx/Il2CppInterop/blob/master/Documentation/Command-Line-Usage.md
-		ensure_dir(path_dir_game_data_cpp2il)
-		if not run_process(command_cpp2il):
-			print("Failed to run cpp2il")
-			return False
-		path_dir_assembly_source = path_dir_game_data_cpp2il
-
-		# Run il2cpp interop.
-		if not args.skip_il2cpp_interop:
-			path_dir_game_data_interop = path_dir_game_data + "_interop"
-			ensure_dir(path_dir_game_data_interop)
-			command = "il2cppinterop generate --input \"{}\" --output \"{}\" --game-assembly \"{}\"".format(path_dir_game_data_cpp2il, path_dir_game_data_interop, os.path.join(path_dir_game, "GameAssembly.dll"))
-			if not run_process(command):
-				print("Failed to run interop")
-				return False
-			path_dir_assembly_source = path_dir_game_data_interop
 
 		# Run command to create beplnex project.
 		ensure_dir(path_dir_game_projects)
@@ -393,8 +463,10 @@ if __name__ == "__main__":
 	parser.add_argument('-pfeu', '--path_file_exe_unity', nargs=1, metavar='PATH_FILE_EXE_UNITY', help="When path of exe is not PATH_DIR_GAME\\PATH_DIR_GAME.exe, you have to specify it manually.")
 	parser.add_argument('-lnla', '--list_name_lib_assembly', nargs='+', metavar=('NAME_LIB_ASSEMBLY_1', 'NAME_LIB_ASSEMBLY_2'), help="List of libs names you wish to depend on besides Assembly-CSharp.dll.")
 	parser.add_argument('-lpla', '--list_path_lib_assembly', nargs='+', metavar=('PATH_LIB_ASSEMBLY_1', 'PATH_LIB_ASSEMBLY_2'), help="List of libs paths you wish to depend on besides Assembly-CSharp.dll.")
-	parser.add_argument('-si', '--skip_il2cpp_interop', help="Skip Il2Cpp interop.", action='store_true')
+	parser.add_argument('-ics2', '--il2cpp_skip_step2', help="Skip Il2Cpp interop or unhollower.", action='store_true')
 	parser.add_argument('-se', '--skip_explorer', help="Do not deploy unity explorer, a plugin for convenience.", action='store_true')
+	parser.add_argument('-icud', '--il2cpp_use_dumper', help="Use il2cppdumper instead of cpp2il.", action='store_true')
+	parser.add_argument('-icuu', '--il2cpp_use_unhollower', help="Use il2cppunhollower instead of il2cppinterop.", action='store_true')
 	args = parser.parse_args()
 
 	process(args)

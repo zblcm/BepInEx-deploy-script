@@ -35,10 +35,13 @@ If you have used them before, you can copy your local version. Or here is a list
 * (mono) BepInEx 5 Mono: https://github.com/BepInEx/BepInEx/releases
 * (il2cpp) BepInEx 6 il2cpp: https://builds.bepinex.dev/projects/bepinex_be
 * (il2cpp) CPP2IL https://github.com/SamboyCoding/Cpp2IL/releases/tag/2022.0.7
+* (il2cpp)(optional) IL2CPPDumper https://github.com/Perfare/Il2CppDumper/releases/tag/v6.7.46
+* (il2cpp)(optional) IL2CPPUnhollower https://github.com/knah/Il2CppAssemblyUnhollower/releases/tag/v0.4.18.0
 * (optional) Unity Explorer https://github.com/sinai-dev/UnityExplorer/releases (BepInEx5.Mono and BepInEx.IL2CPP)
 
-In addition, if you are going to use il2cpp, you should [install il2cpp-interop](https://github.com/BepInEx/Il2CppInterop/blob/master/Documentation/Command-Line-Usage.md).
-
+In addition, if you are going to use il2cpp, you should [install il2cpp-interop](https://github.com/BepInEx/Il2CppInterop/blob/master/Documentation/Command-Line-Usage.md). <br />
+Use `-icud` to enanble il2cppDumper. il2cppDumper is a replacement of CPP2IL. Currently CPP2IL does not support metadata version 31. You could edit its `config.json`'s `RequireAnyKey` to `false` if you want. <br />
+Use `-icuu` to enanble il2cppUnhollower. il2cppUnhollower is a replacement of il2cppInterop. I think it sametimes cause problems so try il2cppInterop first. <br />
 
 Then you can run python command to deploy BepInEx automatically.
 ```
