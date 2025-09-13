@@ -263,10 +263,11 @@ def process(args):
 		print("Unity: {}".format(beplnex_info_unity))
 
 		# Run command to create beplnex project.
-		ensure_dir(path_dir_game_projects)
-		if not run_process("dotnet new bepinex5plugin -n {} -T {} -U {}".format(name_project, beplnex_info_tfm, beplnex_info_unity), path_dir_game_projects):
-			print("Failed to create beplnex project")
-			return False
+		if not args.skip_project_copy_assembly:
+			ensure_dir(path_dir_game_projects)
+			if not run_process("dotnet new bepinex5plugin -n {} -T {} -U {}".format(name_project, beplnex_info_tfm, beplnex_info_unity), path_dir_game_projects):
+				print("Failed to create beplnex project")
+				return False
 
 		# Assign assembly source directory for project processing.
 		path_dir_assembly_source:str = path_dir_game_data_mono
@@ -369,10 +370,11 @@ def process(args):
 		copy_dir(path_toolchain_beplnex_src, path_dir_game)
 
 		# Run command to create beplnex project.
-		ensure_dir(path_dir_game_projects)
-		if not run_process("dotnet new bep6plugin_unity_il2cpp -n {}".format(name_project), path_dir_game_projects):
-			print("Failed to create beplnex project")
-			return False
+		if not args.skip_project_copy_assembly:
+			ensure_dir(path_dir_game_projects)
+			if not run_process("dotnet new bep6plugin_unity_il2cpp -n {}".format(name_project), path_dir_game_projects):
+				print("Failed to create beplnex project")
+				return False
 
 		# Assign path of unity explorer.
 		if not args.skip_explorer:
@@ -380,7 +382,6 @@ def process(args):
 
 	# project processing.
 	if not (path_dir_assembly_source is None):
-
 		# Restore beplnex project.
 		path_dir_game_project = os.path.join(path_dir_game_projects, name_project)
 		path_file_game_project = os.path.join(path_dir_game_project, name_project + ".csproj")
@@ -388,61 +389,75 @@ def process(args):
 			print("Failed to restore beplnex project")
 			return False
 
-		# copy lib files.
-		list_path_lib_assembly = check_list_path_lib_assembly(path_dir_assembly_source, args.list_name_lib_assembly, args.list_path_lib_assembly)
+		# fetch assembly names from existed csharp project.
+		list_name_lib_assembly = args.list_name_lib_assembly
+		list_path_lib_assembly = args.list_path_lib_assembly
+		if list_name_lib_assembly is None:
+			list_name_lib_assembly = []
+		if list_path_lib_assembly is None:
+			list_path_lib_assembly = []
+			
 		path_dir_game_project_lib = os.path.join(path_dir_game_project, "lib")
+		if os.path.isdir(path_dir_game_project_lib):
+			list_name_lib_assembly = list_name_lib_assembly + list(os.listdir(path_dir_game_project_lib))
+
+		# copy lib files.
+		list_path_lib_assembly = check_list_path_lib_assembly(path_dir_assembly_source, list_name_lib_assembly, list_path_lib_assembly)
 		ensure_dir(path_dir_game_project_lib)
 		for path_lib_assembly in list_path_lib_assembly:
 			path_file_src = path_lib_assembly
 			path_file_dst = os.path.join(path_dir_game_project_lib, os.path.basename(path_lib_assembly))
+			if args.skip_project_copy_assembly and os.path.isfile(path_file_dst):
+				os.remove(path_file_dst)
 			if not os.path.isfile(path_file_dst):
 				shutil.copyfile(path_file_src, path_file_dst)
 
-		# Modify .csproj files.
-		print("Modify {} ...".format(path_file_game_project))
-		file_game_project = open(path_file_game_project, "r")
-		lines = file_game_project.readlines()
-		file_game_project.close()
+		if not args.skip_project_copy_assembly:
+			# Modify .csproj files.
+			print("Modify {} ...".format(path_file_game_project))
+			file_game_project = open(path_file_game_project, "r")
+			lines = file_game_project.readlines()
+			file_game_project.close()
 
-		line_prefix = None
-		line_num_insert = None
-		line_feed = "\n"
-		for line_num in range(len(lines) - 1, 0, -1):
+			line_prefix = None
+			line_num_insert = None
+			line_feed = "\n"
+			for line_num in range(len(lines) - 1, 0, -1):
+				if line_num_insert is None:
+					line = lines[line_num]
+					line_prefix_len = line.find("</ItemGroup>")
+					if line_prefix_len >= 0:
+						line_num_insert = line_num
+						line_prefix = line[:line_prefix_len]
+						if '\r' in line:
+							line_feed = "\r\n"
 			if line_num_insert is None:
-				line = lines[line_num]
-				line_prefix_len = line.find("</ItemGroup>")
-				if line_prefix_len >= 0:
-					line_num_insert = line_num
-					line_prefix = line[:line_prefix_len]
-					if '\r' in line:
-						line_feed = "\r\n"
-		if line_num_insert is None:
-			print("Cannot find line in csproj to insert content.")
-			return False
-		line_num_insert = line_num_insert + 1
+				print("Cannot find line in csproj to insert content.")
+				return False
+			line_num_insert = line_num_insert + 1
 
-		lines_insert = []
-		lines_insert.append(line_prefix)
-		lines_insert.append(line_prefix + "<ItemGroup>")
-		for path_lib_assembly in list_path_lib_assembly:
-			name_lib_assembly = os.path.basename(path_lib_assembly)
-			lines_insert.append(line_prefix + line_prefix + "<Reference Include=\"{}\">".format(name_lib_assembly))
-			lines_insert.append(line_prefix + line_prefix + line_prefix + "<HintPath>lib\\{}</HintPath>".format(name_lib_assembly))
-			lines_insert.append(line_prefix + line_prefix + "</Reference>")
-		lines_insert.append(line_prefix + "</ItemGroup>")
-		lines_insert.append(line_prefix)
-		lines_insert.append(line_prefix + "<Target Name=\"CopyCustomContent\" AfterTargets=\"AfterBuild\">")
-		lines_insert.append(line_prefix + line_prefix + "<Copy SourceFiles=\"$(OutDir)\\$(AssemblyName).dll\" DestinationFolder=\"..\\..\\BepInEx\\plugins\" />")
-		lines_insert.append(line_prefix + "</Target>")
+			lines_insert = []
+			lines_insert.append(line_prefix)
+			lines_insert.append(line_prefix + "<ItemGroup>")
+			for path_lib_assembly in list_path_lib_assembly:
+				name_lib_assembly = os.path.basename(path_lib_assembly)
+				lines_insert.append(line_prefix + line_prefix + "<Reference Include=\"{}\">".format(name_lib_assembly))
+				lines_insert.append(line_prefix + line_prefix + line_prefix + "<HintPath>lib\\{}</HintPath>".format(name_lib_assembly))
+				lines_insert.append(line_prefix + line_prefix + "</Reference>")
+			lines_insert.append(line_prefix + "</ItemGroup>")
+			lines_insert.append(line_prefix)
+			lines_insert.append(line_prefix + "<Target Name=\"CopyCustomContent\" AfterTargets=\"AfterBuild\">")
+			lines_insert.append(line_prefix + line_prefix + "<Copy SourceFiles=\"$(OutDir)\\$(AssemblyName).dll\" DestinationFolder=\"..\\..\\BepInEx\\plugins\" />")
+			lines_insert.append(line_prefix + "</Target>")
 
-		for line_num in range(len(lines_insert)):
-			lines_insert[line_num] = lines_insert[line_num] + line_feed
+			for line_num in range(len(lines_insert)):
+				lines_insert[line_num] = lines_insert[line_num] + line_feed
 
-		lines = lines[:line_num_insert] + lines_insert + lines[line_num_insert:]
+			lines = lines[:line_num_insert] + lines_insert + lines[line_num_insert:]
 
-		file_game_project = open(path_file_game_project, "w")
-		file_game_project.writelines(lines)
-		file_game_project.close()
+			file_game_project = open(path_file_game_project, "w")
+			file_game_project.writelines(lines)
+			file_game_project.close()
 
 		# Copy unity explorer.
 		if not path_toolchain_unity_explorer is None:
@@ -467,6 +482,7 @@ if __name__ == "__main__":
 	parser.add_argument('-se', '--skip_explorer', help="Do not deploy unity explorer, a plugin for convenience.", action='store_true')
 	parser.add_argument('-icud', '--il2cpp_use_dumper', help="Use il2cppdumper instead of cpp2il.", action='store_true')
 	parser.add_argument('-icuu', '--il2cpp_use_unhollower', help="Use il2cppunhollower instead of il2cppinterop.", action='store_true')
+	parser.add_argument('-spca', '--skip_project_copy_assembly', help="When game assembly is updated, sync it to csproj.", action='store_true')
 	args = parser.parse_args()
 
 	process(args)

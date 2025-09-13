@@ -25,6 +25,10 @@ Download this repo or clone.
 git clone git@github.com:zblcm/BepInEx-deploy-script.git
 cd BepInEx-deploy-script
 ```
+Install windows related packages:
+```
+python -m pip install pywin32 windows-metadata
+```
 Create a directory under repo root directory.
 ```
 mkdir toolchain
